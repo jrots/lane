@@ -25,7 +25,6 @@ type PQueue struct {
 	sync.RWMutex
 	items      []*item
 	elemsCount int
-	maxCount   int
 	comparator func(int, int) bool
 }
 
@@ -42,7 +41,7 @@ func (i *item) String() string {
 
 // NewPQueue creates a new priority queue with the provided pqtype
 // ordering type
-func NewPQueue(pqType PQType, maxCount int) *PQueue {
+func NewPQueue(pqType PQType) *PQueue {
 	var cmp func(int, int) bool
 
 	if pqType == MAXPQ {
@@ -57,7 +56,6 @@ func NewPQueue(pqType PQType, maxCount int) *PQueue {
 	return &PQueue{
 		items:      items,
 		elemsCount: 0,
-		maxCount:   maxCount,
 		comparator: cmp,
 	}
 }
@@ -67,15 +65,8 @@ func (pq *PQueue) Push(value interface{}, priority int) {
 	item := newItem(value, priority)
 
 	pq.Lock()
-	if pq.maxCount > 0 && pq.elemsCount+1 > pq.maxCount {
-		// remove one first
-		pq.popInternal()
-		pq.items = append(pq.items, item)
-
-	} else {
-		pq.items = append(pq.items, item)
-		pq.elemsCount += 1
-	}
+	pq.items = append(pq.items, item)
+	pq.elemsCount += 1
 	pq.swim(pq.size())
 	pq.Unlock()
 }
@@ -85,12 +76,6 @@ func (pq *PQueue) Push(value interface{}, priority int) {
 func (pq *PQueue) Pop() (interface{}, int) {
 	pq.Lock()
 	defer pq.Unlock()
-
-	return pq.popInternal()
-}
-
-// Internal function without locking => because this also used by Push() who does the locking already
-func (pq *PQueue) popInternal() (interface{}, int) {
 
 	if pq.size() < 1 {
 		return nil, 0
@@ -104,6 +89,22 @@ func (pq *PQueue) popInternal() (interface{}, int) {
 	pq.sink(1)
 
 	return max.value, max.priority
+}
+
+func (pq *PQueue) Shrink(to int) {
+	pq.Lock()
+	defer pq.Unlock()
+
+	if pq.size() < 1 {
+		return
+	}
+
+	for pq.elemsCount > to {
+		pq.exch(1, pq.size())
+		pq.items = pq.items[0:pq.size()]
+		pq.elemsCount -= 1
+		pq.sink(1)
+	}
 }
 
 // Head returns the highest/lowest priority item (depending on whether
